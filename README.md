@@ -1,8 +1,9 @@
 # PDF Renamer
 
-This will use an LLM that supports the OpenAI HTTP endpoint.
-It will extract information from a PDF file and rename the file accordingly.
-The `--format` option can be used with [sprig](http://masterminds.github.io/sprig/) template functions to do transformations on the templates values.
+This will use an LLM that supports the OpenAI HTTP endpoint. It will extract
+information from a PDF file and rename the file accordingly. The `--format`
+option can be used with [sprig](http://masterminds.github.io/sprig/) template
+functions to do transformations on the templates values.
 
 ## Usage
 
