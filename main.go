@@ -31,6 +31,8 @@ type CLI struct {
 
 	Format string `help:"format of the file to rename to" default:"{{.Title}}.pdf"`
 	Prompt string `help:"additional info prompt to use to extract text from PDF" default:""`
+
+	DryRun bool `help:"do not rename files, just print what would be done"`
 }
 
 func (c *CLI) Run() error {
@@ -173,7 +175,20 @@ func (c *CLI) Run() error {
 		return fmt.Errorf("failed to parse filename format: %w", err)
 	}
 
-	template.Execute(os.Stdout, values)
+	filename := &strings.Builder{}
+	err = template.Execute(filename, values)
+	if err != nil {
+		return fmt.Errorf("failed to execute filename format: %w", err)
+	}
+
+	if c.DryRun {
+		fmt.Println(filename.String())
+	} else {
+		err = os.Rename(c.Filename, filename.String())
+		if err != nil {
+			return fmt.Errorf("failed to rename file: %w", err)
+		}
+	}
 
 	return nil
 }
