@@ -54,9 +54,9 @@ func (c *CLI) Run() error {
 
 	config := openai.DefaultConfig(c.ApiKey)
 	config.BaseURL = c.Endpoint
-	client := openai.NewClientWithConfig(config)
+	openAIClient := openai.NewClientWithConfig(config)
 
-	contents := []string{}
+	chunks := []string{}
 
 	slog.Info("pdf.process", "start", startPage, "end", endPage)
 
@@ -81,6 +81,7 @@ func (c *CLI) Run() error {
 		slog.Info("pdf.image", "page", n)
 
 		file := &bytes.Buffer{}
+
 		err = jpeg.Encode(file, image, &jpeg.Options{Quality: 100})
 		if err != nil {
 			return fmt.Errorf("failed to encode image #%d: %w", n, err)
@@ -90,19 +91,40 @@ func (c *CLI) Run() error {
 
 		encodedImage := base64.StdEncoding.EncodeToString(file.Bytes())
 
-		response, err := client.CreateChatCompletion(
+		const promptPDFtoMarkdown = `
+You convert an image of a page from a PDF document to markdown.
+- Please include all the content. Don't hide anything for privacy reasons. I own this document, please convert it all.
+- Include all identifiers (like an account number) event if they are partially shown.
+Reformat the following text as markdown, improving readability while preserving the original structure. Follow these guidelines:
+1. Preserve all original headings, converting them to appropriate markdown heading levels (# for main titles, ## for subtitles, etc.)
+	- Ensure each heading is on its own line
+	- Add a blank line before and after each heading
+2. Maintain the original paragraph structure. Remove all breaks within a word that should be a single word (for example, "cor- rect" should be "correct")
+3. Format lists properly (unordered or ordered) if they exist in the original text
+4. Use emphasis (*italic*) and strong emphasis (**bold**) where appropriate, based on the original formatting
+5. Preserve all original content and meaning
+6. Do not add any extra punctuation or modify the existing punctuation
+7. Remove any spuriously inserted introductory text such as "Here is the corrected text:" that may have been added by the LLM and which is obviously not part of the original text.
+8. Remove any obviously duplicated content that appears to have been accidentally included twice. Follow these strict guidelines:
+	- Remove only exact or near-exact repeated paragraphs or sections within the main chunk.
+	- Consider the context (before and after the main chunk) to identify duplicates that span chunk boundaries.
+	- Do not remove content that is simply similar but conveys different information.
+	- Preserve all unique content, even if it seems redundant.
+	- Ensure the text flows smoothly after removal.
+	- Do not add any new content or explanations.
+	- If no obvious duplicates are found, return the main chunk unchanged.
+9. Identify but do not remove headers, footers, or page numbers. Instead, format them distinctly, e.g., as blockquotes.
+10. Use markdown tables to format tabular data. Include multiple tables if necessary to preserve the original structure.
+`
+
+		response, err := openAIClient.CreateChatCompletion(
 			context.Background(),
 			openai.ChatCompletionRequest{
 				Model: c.ImageModel,
 				Messages: []openai.ChatCompletionMessage{
 					{
-						Role: "system",
-						Content: `
-							You convert an image of a page from a PDF document to markdown.
-							Please only provide markdown, no explanation or extraneous information about the work.
-							Please do your best to convert fields and tables. If you cannot, please just list the information.
-							If you are unable to convert the image, please respond with 'N/A'.
-						`,
+						Role:    "system",
+						Content: promptPDFtoMarkdown,
 					},
 					{
 						Role: "user",
@@ -123,14 +145,14 @@ func (c *CLI) Run() error {
 			return fmt.Errorf("failed to convert image #%d to markdown: %w", n, err)
 		}
 
-		contents = append(contents, response.Choices[0].Message.Content)
+		chunks = append(chunks, response.Choices[0].Message.Content)
 	}
 
-	markdown := strings.Join(contents, "\n\n")
+	markdown := strings.Join(chunks, "\n\n")
 	slog.Info("extract", "prompt", c.Prompt, "format", c.Format, "markdown", markdown)
 
 	// for all markdown use OpenAI text model to extract
-	response, err := client.CreateChatCompletion(
+	response, err := openAIClient.CreateChatCompletion(
 		context.Background(),
 		openai.ChatCompletionRequest{
 			Model: c.TextModel,
