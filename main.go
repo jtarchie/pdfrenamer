@@ -20,7 +20,7 @@ import (
 )
 
 type CLI struct {
-	Filename string `arg:"" type:"existingfile" help:"PDF file to rename"`
+	Filename  string `arg:"" type:"existingfile" help:"PDF file to rename"`
 	PageRange string `help:"range of pages to analyze from PDF" default:"1"`
 
 	Endpoint string `help:"OpenAI endpoint"`
@@ -60,7 +60,7 @@ func (c *CLI) Run() error {
 
 	// for each page of the PDF convert to image
 	for n := 0; n < doc.NumPage(); n++ {
-		if n < startPage{
+		if n < startPage {
 			slog.Info("pdf.skip", "page", n)
 			continue
 		}
@@ -95,7 +95,12 @@ func (c *CLI) Run() error {
 				Messages: []openai.ChatCompletionMessage{
 					{
 						Role: "system",
-						Content: "The following image is a page from a PDF document. Please convert it to markdown. If you are unable to convert the image, please respond with 'N/A'.",
+						Content: `
+							You convert an image of a page from a PDF document to markdown.
+							Please only provide markdown, no explanation or extraneous information about the work.
+							Please do your best to convert fields and tables. If you cannot, please just list the information.
+							If you are unable to convert the image, please respond with 'N/A'.
+						`,
 					},
 					{
 						Role: "user",
@@ -129,11 +134,19 @@ func (c *CLI) Run() error {
 			Model: c.TextModel,
 			Messages: []openai.ChatCompletionMessage{
 				{
-					Role: "system", 
-					Content: "The following is markdown document that will be used to extract information from.\n" + c.Prompt + "\nThe information extracted will be used to evaluate the format of the filename `" + c.Format + "`, which is in Go text/template format. No extraneous explanation or content is required. Please provide JSON output of the elements from the expected filename. For example if the format was {{.Title | snakecase}}, please return JSON of `{Title': 'My Title'}` Please keep it as string value key-pairs.",
+					Role: "system",
+					Content: fmt.Sprintf(`
+						The following is markdown document that will be used to extract information from.
+						The user would like you to ensure the following about the extraction: %s
+						The information extracted will be used to evaluate the format of the filename "%s",
+						which is in Go text/template format. No extraneous explanation or content is required.
+						Please provide JSON output of the elements from the expected filename.
+						For example if the format was {{.Title | snakecase}}, please return JSON of "{"Title": "My Title"}"
+						Please keep it as string value key-pairs. Ensure the key names are the same case as the template.
+					`, c.Prompt, c.Format),
 				},
 				{
-					Role: "user",
+					Role:    "user",
 					Content: markdown,
 				},
 			},
@@ -154,7 +167,7 @@ func (c *CLI) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal JSON payload: %w", err)
 	}
-	
+
 	template, err := template.New("filename").Funcs(sprig.FuncMap()).Parse(c.Format)
 	if err != nil {
 		return fmt.Errorf("failed to parse filename format: %w", err)
