@@ -92,29 +92,28 @@ func (c *CLI) Run() error {
 		encodedImage := base64.StdEncoding.EncodeToString(file.Bytes())
 
 		const promptPDFtoMarkdown = `
-You convert an image of a page from a PDF document to markdown.
-- Please include all the content. Don't hide anything for privacy reasons. I own this document, please convert it all.
-- Include all identifiers (like an account number) event if they are partially shown.
-Reformat the following text as markdown, improving readability while preserving the original structure. Follow these guidelines:
-1. Preserve all original headings, converting them to appropriate markdown heading levels (# for main titles, ## for subtitles, etc.)
-	- Ensure each heading is on its own line
-	- Add a blank line before and after each heading
-2. Maintain the original paragraph structure. Remove all breaks within a word that should be a single word (for example, "cor- rect" should be "correct")
-3. Format lists properly (unordered or ordered) if they exist in the original text
-4. Use emphasis (*italic*) and strong emphasis (**bold**) where appropriate, based on the original formatting
-5. Preserve all original content and meaning
-6. Do not add any extra punctuation or modify the existing punctuation
-7. Remove any spuriously inserted introductory text such as "Here is the corrected text:" that may have been added by the LLM and which is obviously not part of the original text.
-8. Remove any obviously duplicated content that appears to have been accidentally included twice. Follow these strict guidelines:
-	- Remove only exact or near-exact repeated paragraphs or sections within the main chunk.
-	- Consider the context (before and after the main chunk) to identify duplicates that span chunk boundaries.
-	- Do not remove content that is simply similar but conveys different information.
-	- Preserve all unique content, even if it seems redundant.
-	- Ensure the text flows smoothly after removal.
-	- Do not add any new content or explanations.
-	- If no obvious duplicates are found, return the main chunk unchanged.
-9. Identify but do not remove headers, footers, or page numbers. Instead, format them distinctly, e.g., as blockquotes.
-10. Use markdown tables to format tabular data. Include multiple tables if necessary to preserve the original structure.
+You are tasked with converting an image of a page from a PDF document into a markdown text representation. Follow these strict guidelines to ensure accuracy and consistency:
+1. Include **all visible content from the page** without omitting or altering any information for privacy or any other reasons. 
+2. **Preserve the original structure** and intent of the document:
+   - Convert headings to appropriate markdown heading levels ('#', '##', etc.), ensuring a blank line before and after each heading.
+   - Keep paragraphs intact, ensuring no line breaks occur within words (e.g., "cor- rect" becomes "correct").
+   - Reformat lists into proper markdown syntax:
+     - Unordered lists: '-' or '*'
+     - Ordered lists: '1.', '2.', etc.
+3. Apply markdown formatting to enhance readability:
+   - Use '*italic*' and '**bold**' where present in the original content.
+   - Convert tables into markdown table format. Retain all rows and columns as they appear.
+4. Identify and **clearly mark headers, footers, and page numbers** as blockquotes ('>') but do not remove them.
+5. Strictly preserve original punctuation and capitalization:
+   - Do not add punctuation or modify the existing punctuation.
+   - Maintain original text flow without introducing unnecessary explanations.
+6. Handle duplicate content carefully:
+   - Remove only **exact or near-exact duplicates** within the page.
+   - Cross-check the context (before and after the main chunk) to avoid accidental removal of meaningful content.
+   - If no duplicates are identified, return the content as is.
+7. Avoid injecting additional content:
+   - Do not add introductory text like "Here is the converted text" or similar phrases.
+   - Ensure the output contains only the content extracted from the image.
 `
 
 		response, err := openAIClient.CreateChatCompletion(
@@ -160,13 +159,22 @@ Reformat the following text as markdown, improving readability while preserving 
 				{
 					Role: "system",
 					Content: fmt.Sprintf(`
-						The following is markdown document that will be used to extract information from.
-						The user would like you to ensure the following about the extraction: %s
-						The information extracted will be used to evaluate the format of the filename "%s",
-						which is in Go text/template format. No extraneous explanation or content is required.
-						Please provide JSON output of the elements from the expected filename.
-						For example if the format was {{.Title | snakecase}}, please return JSON of "{"Title": "My Title"}"
-						Please keep it as string value key-pairs. Ensure the key names are the same case as the template.
+You are provided with a markdown document, and your task is to extract specific information to generate a JSON object. The extracted information will be used to construct a filename using a Go 'text/template' format. Follow these instructions precisely:
+1. **Understand the provided context:**
+	- The user has requested specific guidance for extraction: '%s'.   
+	- The filename format is: '%s'.
+2. Extract the required fields from the markdown document:
+   - Each field corresponds to a key in the filename template (e.g., '{{.Title}}').
+   - Ensure that the extracted fields strictly match the case of the keys in the template.
+3. Output the extracted data as a valid JSON object:
+   - Use string key-value pairs only.
+   - For example, if the format is '{{.Title | snakecase}}', output should be: '{"Title": "My Title"}'.
+4. Do not include any extraneous explanation, commentary, or additional data outside the JSON object.
+5. Handle potential variations in the markdown document:
+   - If a field is missing or ambiguous, make a **best effort** to infer it based on the surrounding context.
+   - If inference is not possible, exclude the field from the output.
+6. Validate the JSON structure before returning it:
+   - Ensure the output is properly formatted and parsable.
 					`, c.Prompt, c.Format),
 				},
 				{
